@@ -1,0 +1,83 @@
+#!/bin/sh
+
+# statsd - Simple daemon for easy stats aggregation
+#
+# chkconfig: - 85 15
+# processname: statsd
+# config:      /etc/sysconfig/$prog
+# config:      /usr/local/statsd/localConfig.js
+# description: Simple daemon for easy stats aggregation
+
+# Setting `prog` here allows you to symlink this init script, making it easy
+# to run multiple processes on the system.
+prog="$(basename $0)"
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+# Also look at sysconfig; this is where environmental variables should be set
+# on RHEL systems.
+[ -f "/etc/sysconfig/$prog" ] && . /etc/sysconfig/$prog
+
+PATH=$PATH:/usr/local/bin:/usr/bin:/bin
+NODE_BIN=$(which nodejs||which node)
+
+if [ ! -x "$NODE_BIN" ]; then
+	echo "Can't find executable nodejs or node in PATH=$PATH"
+	exit 1
+fi
+
+USER=mail
+LOG_FILE="/var/log/$prog.log"
+LOCK_FILE="/var/lock/subsys/$prog"
+NODE_ARGS="/usr/local/statsd/stats.js /usr/local/statsd/localConfig.js"
+RETVAL=0
+
+do_start() {
+	echo -n $"Starting $prog: "
+	if [ ! -f "$LOCK_FILE" ] ; then
+		runuser -l "$USER" -s "/bin/sh" -c "$NODE_BIN $NODE_ARGS >> $LOG_FILE &" && echo_success || echo_failure
+		RETVAL=$?
+		echo
+		[ $RETVAL -eq 0 ] && touch $LOCK_FILE
+	else
+		echo "already started (lock file exists)."
+		RETVAL=1
+	fi
+}
+
+do_stop() {
+    echo -n $"Stopping $prog: "
+    PID=`ps -aefw | grep "$NODE_BIN $NODE_ARGS" | grep -v " grep " | awk '{print $2}'`
+    if [ -z $PID ]; then
+	    if [ -f "$LOCK_FILE" ]; then
+			echo "not running, but lock file found - incorrect shutdown?"
+		    rm -f $LOCK_FILE
+	    else
+			echo "not running."
+	    fi
+    else
+	    kill -9 $PID > /dev/null 2>&1 && echo_success || echo_failure
+	    RETVAL=$?
+	fi
+    echo
+    [ $RETVAL -eq 0 ] && rm -f $LOCK_FILE
+}
+
+case "$1" in
+start)
+	do_start
+;;
+stop)
+	do_stop
+;;
+restart)
+	do_stop
+	do_start
+;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	RETVAL=1
+esac
+
+exit $RETVAL

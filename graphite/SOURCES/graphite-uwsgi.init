@@ -1,0 +1,97 @@
+#!/bin/sh
+
+# uwsgi - Startup script for uwsgi
+#
+# chkconfig: - 85 15
+# processname: uwsgi
+# config:      /etc/sysconfig/$prog
+# config:      /usr/local/uwsgi/conf/$prog.ini
+# pidfile:     /var/run/uwsgi/$prog.pid
+# description: uWSGI is a program to run applications adhering to the
+#              Web Server Gateway Interface.
+
+# Setting `prog` here allows you to symlink this init script, making it easy
+# to run multiple processes on the system.
+prog="$(basename $0)"
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+# Also look at sysconfig; this is where environmental variables should be set
+# on RHEL systems.
+[ -f "/etc/sysconfig/$prog" ] && . /etc/sysconfig/$prog
+
+uwsgi=/usr/local/bin/uwsgi
+user=mail
+pidfile="/var/run/uwsgi/$prog.pid"
+logfile="/var/log/uwsgi/$prog.log"
+lockfile="/var/lock/subsys/$prog"
+conffile="--ini /usr/local/uwsgi/conf/$prog.ini"
+opts=" \
+  --master \
+  --no-orphans \
+  --logdate \
+  --chmod-socket=660 \
+  --gid $user \
+  --uid $user \
+  --daemonize $logfile \
+  --pidfile $pidfile \
+  $conffile
+"
+RETVAL=0
+
+start() {
+    echo -n $"Starting $prog: "
+
+    daemon --pidfile=${pidfile} ${uwsgi} ${opts}
+    RETVAL=$?
+    echo
+    [ $RETVAL = 0 ] && touch ${lockfile}
+    return $RETVAL
+}
+
+stop() {
+    echo -n $"Stopping $prog: "
+    killproc -p ${pidfile} ${prog}
+    RETVAL=$?
+    echo
+    [ $RETVAL = 0 ] && rm -f ${lockfile} ${pidfile}
+}
+
+reload() {
+    echo -n $"Reloading $prog: "
+    killproc -p ${pidfile} ${prog} -HUP
+    RETVAL=$?
+    echo
+}
+
+rh_status() {
+    status -p ${pidfile} ${prog}
+}
+
+# See how we were called.
+case "$1" in
+    start)
+        rh_status >/dev/null 2>&1 && exit 0
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        rh_status
+        RETVAL=$?
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    force-reload|reload)
+        reload
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart|force-reload|reload|status}"
+        RETVAL=2
+esac
+
+exit $RETVAL
